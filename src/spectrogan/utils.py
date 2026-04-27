@@ -20,7 +20,21 @@ def create_noise(sample_size, nz, device):
     return torch.randn(sample_size, nz).to(device)
 
 
-def train_discriminator(discriminator, optimizer, data_real, data_fake):
+def train_spectrogram_discriminator(discriminator, optimizer, data_real, data_fake):
+    optimizer.zero_grad()
+
+    output_real = discriminator(data_real)
+    loss_real = torch.mean(F.relu(1. - output_real))
+
+    output_fake = discriminator(data_fake)
+    loss_fake = torch.mean(F.relu(1. + output_fake))
+
+    (loss_real + loss_fake).backward()
+    optimizer.step()
+
+    return loss_real + loss_fake
+
+def train_waveform_discriminator(discriminator, optimizer, data_real, data_fake):
     optimizer.zero_grad()
 
     output_real = discriminator(data_real)
@@ -35,10 +49,11 @@ def train_discriminator(discriminator, optimizer, data_real, data_fake):
     return loss_real + loss_fake
 
 
-def train_generator(discriminator, optimizer, data_fake):
+def train_generator(waveform_discriminator, spectrogram_discriminator, optimizer, fake_waveforms, fake_spectrograms, lam):
     optimizer.zero_grad()
-    output = discriminator(data_fake)
-    loss = -torch.mean(output)
+    output_w = waveform_discriminator(fake_waveforms)
+    output_s = spectrogram_discriminator(fake_spectrograms)
+    loss = -(lam*torch.mean(output_w)) - torch.mean(output_s)
     loss.backward()
     optimizer.step()
     return loss

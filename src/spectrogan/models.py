@@ -36,13 +36,6 @@ class WaveformGenerator(nn.Module):
         x = self.net(x)
         return x.squeeze(1)
     
-    def train_generator(self, discriminator, optimizer, data_fake):
-        optimizer.zero_grad()
-        output = discriminator(data_fake)
-        loss = -torch.mean(output)
-        loss.backward()
-        optimizer.step()
-        return loss
         
 class SpectrogramDiscriminator(nn.Module):
     def __init__(self):
@@ -74,12 +67,58 @@ class SpectrogramDiscriminator(nn.Module):
         x = x.unsqueeze(1)
         return self.net(x)
     
+
+class WaveformDiscriminator(nn.Module):
+    """1D convolutional discriminator for raw waveform inputs.
+
+    Expects inputs of shape (batch, length). Unsqueezes a channel dim to
+    produce (batch, 1, length) before passing through Conv1d layers.
+    """
+    def __init__(self):
+        super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Conv1d(1, 16, kernel_size=3, stride=2, padding=1),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv1d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm1d(32),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv1d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv1d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(0.2),
+
+            nn.AdaptiveAvgPool1d(1),
+
+            nn.Flatten(),
+            nn.Linear(128, 1)
+        )
+
+    def forward(self, x):
+        # accept (batch, length) and convert to (batch, 1, length)
+        x = x.unsqueeze(1)
+        return self.net(x)
+
     def train(self, optimizer, data_real, data_fake):
+        """Hinge-loss training step for the waveform discriminator.
+
+        Parameters:
+            optimizer: optimizer for the discriminator
+            data_real: real waveforms, shape (batch, length)
+            data_fake: fake waveforms, shape (batch, length)
+        Returns:
+            combined loss for real and fake
+        """
         optimizer.zero_grad()
         output_real = self.forward(data_real)
-        loss_real = torch.mean(F.relu(1. - output_real)) #Hinge loss
+        loss_real = torch.mean(F.relu(1. - output_real))  # hinge loss
         output_fake = self.forward(data_fake)
-        loss_fake = torch.mean(F.relu(1. + output_fake)) #Hinge loss
+        loss_fake = torch.mean(F.relu(1. + output_fake))  # hinge loss
         loss_real.backward()
         loss_fake.backward()
         optimizer.step()
