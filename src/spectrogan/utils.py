@@ -4,9 +4,8 @@ import matplotlib.pyplot as plt
 
 plt.style.use("dark_background")
 
-def get_specs(samps, extractor, device):
-    samps = samps.to(device)
-    specs = extractor(torch.squeeze(samps))['input_values']
+def get_specs(samps, extractor):
+    specs = extractor(samps)['input_values']
     specs = torch.log(specs + 1e-8)
     return (specs - specs.mean()) / (specs.std() + 1e-5)
 
@@ -20,43 +19,15 @@ def create_noise(sample_size, nz, device):
     return torch.randn(sample_size, nz).to(device)
 
 
-def train_spectrogram_discriminator(discriminator, optimizer, data_real, data_fake):
-    optimizer.zero_grad()
-
+def discriminator_loss(discriminator, data_real, data_fake):
     output_real = discriminator(data_real)
     loss_real = torch.mean(F.relu(1. - output_real))
 
     output_fake = discriminator(data_fake)
     loss_fake = torch.mean(F.relu(1. + output_fake))
 
-    (loss_real + loss_fake).backward()
-    optimizer.step()
-
     return loss_real + loss_fake
 
-def train_waveform_discriminator(discriminator, optimizer, data_real, data_fake):
-    optimizer.zero_grad()
-
-    output_real = discriminator(data_real)
-    loss_real = torch.mean(F.relu(1. - output_real))
-
-    output_fake = discriminator(data_fake)
-    loss_fake = torch.mean(F.relu(1. + output_fake))
-
-    (loss_real + loss_fake).backward()
-    optimizer.step()
-
-    return loss_real + loss_fake
-
-
-def train_generator(waveform_discriminator, spectrogram_discriminator, optimizer, fake_waveforms, fake_spectrograms, lam):
-    optimizer.zero_grad()
-    output_w = waveform_discriminator(fake_waveforms)
-    output_s = spectrogram_discriminator(fake_spectrograms)
-    loss = -(lam*torch.mean(output_w)) - torch.mean(output_s)
-    loss.backward()
-    optimizer.step()
-    return loss
 
 # plot examples each epoch
 def plot_generated_vs_real(gen_specs, real_specs, n=4):

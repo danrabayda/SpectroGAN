@@ -1,6 +1,6 @@
 from tqdm import tqdm
 import torch
-from .utils import get_specs, create_noise, train_spectrogram_discriminator, train_waveform_discriminator, train_generator, plot_generated_vs_real
+from .utils import get_specs, create_noise, discriminator_loss, plot_generated_vs_real
 
 def train_loop(
     generator,
@@ -19,35 +19,51 @@ def train_loop(
         loss_g, loss_d = 0, 0
 
         for _ in tqdm(range(config.steps_per_epoch)):
-            samps, _ = next(train_gen)
-            samps = torch.tensor(samps)
+            real_waveforms, _ = next(train_gen)
+            real_waveforms = torch.tensor(real_waveforms).squeeze().float().to(config.device)
 
-            real_spectrograms = get_specs(samps, extractor, config.device)
+            real_spectrograms = get_specs(real_waveforms, extractor)
             b_size = len(real_spectrograms)
 
             # Train D
             for _ in range(config.k):
-                noise = create_noise(b_size, config.nz, config.device)
-                fake_waveforms = generator(noise).detach()
-                fake_spectrograms = get_specs(fake_waveforms, extractor, config.device)
+                noise = create_noise(b_size, config.nz, config.device).float()
+                fake_waveforms = generator(noise)
+                fake_spectrograms = get_specs(fake_waveforms, extractor)
 
-                real_spectrograms = real_spectrograms.float()
+                real_spectrograms = real_spectrograms
 
-                loss_dw = train_waveform_discriminator(
-                    waveform_discriminator, optim_dw, real_spectrograms, fake_waveforms
+                optim_dw.zero_grad()
+                optim_ds.zero_grad()
+
+                epoch_loss_dw = discriminator_loss(
+                    waveform_discriminator, real_waveforms, fake_waveforms
                 )
 
-                loss_ds = train_spectrogram_discriminator(
-                    spectrogram_discriminator, optim_ds, real_spectrograms, fake_spectrograms
+                epoch_loss_ds = discriminator_loss(
+                    spectrogram_discriminator, real_spectrograms, fake_spectrograms
                 )
 
-                loss_d += config.lam * loss_dw + loss_ds
+                epoch_loss_d = (config.lam_d * epoch_loss_dw) + epoch_loss_ds
+
+                epoch_loss_d.backward()
+                optim_dw.step()
+                optim_ds.step()
+
+                loss_d += epoch_loss_d.detach()
 
             # Train G
             fake_waveforms = generator(create_noise(b_size, config.nz, config.device))
-            fake_spectrograms = get_specs(fake_waveforms, extractor, config.device)
+            fake_spectrograms = get_specs(fake_waveforms, extractor)
 
-            loss_g += train_generator(waveform_discriminator, spectrogram_discriminator, optim_g, fake_waveforms, fake_spectrograms, config.lam)
+            optim_g.zero_grad()
+            output_w = waveform_discriminator(fake_waveforms)
+            output_s = spectrogram_discriminator(fake_spectrograms)
+            epoch_loss_g = -(config.lam_g*torch.mean(output_w)) - torch.mean(output_s)
+            epoch_loss_g.backward()
+            optim_g.step()
+
+            loss_g += epoch_loss_g.detach()
 
         losses_g.append(loss_g / config.steps_per_epoch)
         losses_d.append(loss_d / config.steps_per_epoch)
