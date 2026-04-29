@@ -1,6 +1,7 @@
 from tqdm import tqdm
 import torch
-from .utils import get_specs, create_noise, discriminator_loss, plot_generated_vs_real
+import os
+from .utils import get_specs, create_noise, discriminator_loss, plot_generated_vs_real, save_checkpoint, load_checkpoint
 
 def train_loop(
     generator,
@@ -11,11 +12,21 @@ def train_loop(
     optim_g,
     optim_dw,
     optim_ds,
-    config
+    config,
+    save_file=None
 ):
     losses_g, losses_d = [], []
+    start_epoch = 0
 
-    for epoch in range(config.epochs):
+    # Load checkpoint if available
+    if save_file is not None and os.path.isfile(save_file):
+        print(f"Loading checkpoint from {save_file}")
+        start_epoch, losses_g, losses_d = load_checkpoint(
+            save_file, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds
+        )
+        print(f"Resuming from epoch {start_epoch}")
+
+    for epoch in range(start_epoch, config.epochs):
         loss_g, loss_d = 0, 0
 
         for _ in tqdm(range(config.steps_per_epoch)):
@@ -70,4 +81,9 @@ def train_loop(
 
         print(f"Epoch {epoch}: G={losses_g[-1]}, D={losses_d[-1]}")
         plot_generated_vs_real(fake_spectrograms.transpose(1,2)[:4], real_spectrograms.transpose(1,2)[:4])
+
+        # Save checkpoint at end of each epoch
+        if save_file is not None:
+            save_checkpoint(save_file, epoch+1, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds, losses_g, losses_d)
+
     return losses_g, losses_d

@@ -29,6 +29,29 @@ def discriminator_loss(discriminator, data_real, data_fake):
     return loss_real + loss_fake
 
 
+def save_checkpoint(save_file, epoch, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds, losses_g, losses_d):
+    torch.save({
+        'epoch': epoch,
+        'generator': generator.state_dict(),
+        'waveform_discriminator': waveform_discriminator.state_dict(),
+        'spectrogram_discriminator': spectrogram_discriminator.state_dict(),
+        'optim_g': optim_g.state_dict(),
+        'optim_dw': optim_dw.state_dict(),
+        'optim_ds': optim_ds.state_dict(),
+        'losses_g': losses_g,
+        'losses_d': losses_d
+    }, save_file)
+
+def load_checkpoint(save_file, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds):
+    checkpoint = torch.load(save_file)
+    generator.load_state_dict(checkpoint['generator'])
+    waveform_discriminator.load_state_dict(checkpoint['waveform_discriminator'])
+    spectrogram_discriminator.load_state_dict(checkpoint['spectrogram_discriminator'])
+    optim_g.load_state_dict(checkpoint['optim_g'])
+    optim_dw.load_state_dict(checkpoint['optim_dw'])
+    optim_ds.load_state_dict(checkpoint['optim_ds'])
+    return checkpoint['epoch'], checkpoint['losses_g'], checkpoint['losses_d']
+
 # plot examples each epoch
 def plot_generated_vs_real(gen_specs, real_specs, n=4):
     gen_specs = gen_specs[:n].detach().cpu().numpy()
