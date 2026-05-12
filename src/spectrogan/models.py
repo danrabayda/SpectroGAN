@@ -6,6 +6,7 @@ class WaveformGenerator(nn.Module):
     def __init__(self, nz, output_len):
         super().__init__()
 
+        self.nz = nz
         self.init_len = output_len // 16  # downscale factor
         self.fc = nn.Linear(nz, 256 * self.init_len)
 
@@ -35,6 +36,11 @@ class WaveformGenerator(nn.Module):
         x = x.view(z.size(0), 256, self.init_len)
         x = self.net(x)
         return x.squeeze(1)
+    
+    def generate(self, batch_size, device='cuda'):
+        """Generate waveforms from random noise."""
+        z = torch.randn(batch_size, self.nz, device=device)
+        return self.forward(z)
     
         
 class SpectrogramDiscriminator(nn.Module):

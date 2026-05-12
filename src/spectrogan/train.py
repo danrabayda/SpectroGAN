@@ -1,7 +1,62 @@
 from tqdm import tqdm
 import torch
+import torch.nn.functional as F
 import os
-from .utils import get_specs, create_noise, discriminator_loss, plot_generated_vs_real, save_checkpoint, load_checkpoint
+from .utils import save_model
+from .plot import plot_generated_vs_real, get_specs
+
+###
+# Helper Functions
+###
+def label_real(size, device):
+    return (0.9 + 0.1 * torch.rand(size, 1)).to(device)
+
+def label_fake(size, device):
+    return (0.0 + 0.1 * torch.rand(size, 1)).to(device)
+
+def create_noise(sample_size, nz, device):
+    return torch.randn(sample_size, nz).to(device)
+
+
+def discriminator_loss(discriminator, data_real, data_fake):
+    output_real = discriminator(data_real)
+    loss_real = torch.mean(F.relu(1. - output_real))
+
+    output_fake = discriminator(data_fake)
+    loss_fake = torch.mean(F.relu(1. + output_fake))
+
+    return loss_real + loss_fake
+
+
+def save_checkpoint(save_file, epoch, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds, losses_g, losses_d):
+    torch.save({
+        'epoch': epoch,
+        'generator': generator.state_dict(),
+        'waveform_discriminator': waveform_discriminator.state_dict(),
+        'spectrogram_discriminator': spectrogram_discriminator.state_dict(),
+        'optim_g': optim_g.state_dict(),
+        'optim_dw': optim_dw.state_dict(),
+        'optim_ds': optim_ds.state_dict(),
+        'losses_g': losses_g,
+        'losses_d': losses_d
+    }, save_file)
+
+def load_checkpoint(save_file, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds):
+    checkpoint = torch.load(save_file, weights_only=False)
+    generator.load_state_dict(checkpoint['generator'])
+    waveform_discriminator.load_state_dict(checkpoint['waveform_discriminator'])
+    spectrogram_discriminator.load_state_dict(checkpoint['spectrogram_discriminator'])
+    optim_g.load_state_dict(checkpoint['optim_g'])
+    optim_dw.load_state_dict(checkpoint['optim_dw'])
+    optim_ds.load_state_dict(checkpoint['optim_ds'])
+    return checkpoint['epoch'], checkpoint['losses_g'], checkpoint['losses_d']
+
+
+
+
+###
+# Training Loop
+###
 
 def train_loop(
     generator,
@@ -13,16 +68,21 @@ def train_loop(
     optim_dw,
     optim_ds,
     config,
-    save_file=None
+    save_folder,
 ):
     losses_g, losses_d = [], []
     start_epoch = 0
 
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
+    checkpoint_path = os.path.join(save_folder, "checkpoint.pt")
+    save_path = os.path.join(save_folder, "generator.pt")
+
     # Load checkpoint if available
-    if save_file is not None and os.path.isfile(save_file):
-        print(f"Loading checkpoint from {save_file}")
+    if checkpoint_path is not None and os.path.isfile(checkpoint_path):
+        print(f"Loading checkpoint from {checkpoint_path}")
         start_epoch, losses_g, losses_d = load_checkpoint(
-            save_file, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds
+            checkpoint_path, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds
         )
         print(f"Resuming from epoch {start_epoch}")
 
@@ -83,7 +143,9 @@ def train_loop(
         plot_generated_vs_real(fake_spectrograms.transpose(1,2)[:4], real_spectrograms.transpose(1,2)[:4])
 
         # Save checkpoint at end of each epoch
-        if save_file is not None:
-            save_checkpoint(save_file, epoch+1, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds, losses_g, losses_d)
+        if checkpoint_path is not None:
+            save_checkpoint(checkpoint_path, epoch+1, generator, waveform_discriminator, spectrogram_discriminator, optim_g, optim_dw, optim_ds, losses_g, losses_d)
+            # Save generator as a full model for easy reloading
+            save_model(generator, save_path, config)
 
     return losses_g, losses_d
