@@ -39,7 +39,7 @@ class WaveformGenerator(nn.Module):
     
     def generate(self, batch_size, device='cuda'):
         """Generate waveforms from random noise."""
-        z = torch.randn(batch_size, self.nz, device=device)
+        z = torch.randn(batch_size, self.nz, device=device).float()
         return self.forward(z)
     
         

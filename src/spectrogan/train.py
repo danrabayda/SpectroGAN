@@ -14,10 +14,6 @@ def label_real(size, device):
 def label_fake(size, device):
     return (0.0 + 0.1 * torch.rand(size, 1)).to(device)
 
-def create_noise(sample_size, nz, device):
-    return torch.randn(sample_size, nz).to(device)
-
-
 def discriminator_loss(discriminator, data_real, data_fake):
     output_real = discriminator(data_real)
     loss_real = torch.mean(F.relu(1. - output_real))
@@ -98,8 +94,7 @@ def train_loop(
 
             # Train D
             for _ in range(config.k):
-                noise = create_noise(b_size, config.nz, config.device).float()
-                fake_waveforms = generator(noise)
+                fake_waveforms = generator.generate(b_size, device=config.device)
                 fake_spectrograms = get_specs(fake_waveforms, extractor)
 
                 real_spectrograms = real_spectrograms
@@ -124,7 +119,7 @@ def train_loop(
                 loss_d += epoch_loss_d.detach()
 
             # Train G
-            fake_waveforms = generator(create_noise(b_size, config.nz, config.device))
+            fake_waveforms = generator.generate(b_size, device=config.device)
             fake_spectrograms = get_specs(fake_waveforms, extractor)
 
             optim_g.zero_grad()
